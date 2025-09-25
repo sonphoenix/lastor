@@ -299,53 +299,58 @@ async fn main() {
         window_width: 1200,
         window_height: 800,
         show_fps: true,
-        show_input_debug: true,  // Enable input debugging
-        background_color:BLACK,
+        show_input_debug: true, // Enable input debugging
+        background_color: BLACK,
         ..Default::default()
-        
     };
-    
+
     let mut game = Game::with_config(config);
-    
+
     // Customize input bindings
     {
         let input = game.get_input_mut();
-        
+
         // Add custom sprint action
         input.bind_action(Action::custom("sprint"), vec![
             InputBinding::key(KeyCode::LeftShift),
             InputBinding::key(KeyCode::RightShift),
         ]);
-        
+
         // Add alternative jump binding (Up arrow in addition to Space)
         input.add_binding(Action::Jump, InputBinding::key(KeyCode::Up));
-        
+
         // Set a shorter buffer time for more responsive controls
         input.set_buffer_time(0.15);
     }
-    
-    // Add player at center-left
-    game.add_entity(Box::new(Player::new(Vec2::new(200.0, 400.0))));
-    
-    // Add some moving targets to make it interesting
+
+    // --- Player setup ---
+    let player = Box::new(Player::new(Vec2::new(200.0, 400.0)));
+    let player_ref: *const Player = &*player;
+    game.add_entity(player);
+
+    // --- Camera setup ---
+    game.get_scene_mut().camera.set_follow_target(move || unsafe {
+        (*player_ref).transform.position
+    });
+
+    game.get_scene_mut().camera.set_follow_speed(6.0);
+
+    // Add some moving targets
     let colors = [RED, GREEN, YELLOW, PURPLE, ORANGE];
     for i in 0..5 {
         game.add_entity(Box::new(MovingTarget::new(
-            Vec2::new(
-                500.0 + (i as f32 * 100.0), 
-                150.0 + (i as f32 * 80.0)
-            ),
+            Vec2::new(500.0 + (i as f32 * 100.0), 150.0 + (i as f32 * 80.0)),
             colors[i % colors.len()],
         )));
     }
-    
+
     // Add instructions UI
     game.add_entity(Box::new(InstructionsUI::new()));
-    
+
     println!("=== LASTOR INPUT DEMO ===");
     println!("Try all the controls and watch the debug info!");
     println!("Notice how input buffering makes jump feel responsive.");
     println!("The sprint action is a custom action - you can create any actions you need!");
-    
+
     game.run().await;
 }

@@ -15,6 +15,15 @@ pub enum Action {
     Defend,
     Interact,
     Pause,
+
+    //camera actions
+     CameraZoomIn,
+    CameraZoomOut,
+    CameraPanUp,
+    CameraPanDown,
+    CameraPanLeft,
+    CameraPanRight,
+    CameraReset,
     
     // Custom actions (users can extend this)
     Custom(String),

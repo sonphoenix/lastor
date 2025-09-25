@@ -1,4 +1,4 @@
-// examples/basic_game.rs
+// examples/basic_game.rs - FIXED VERSION
 use lastor::prelude::*;
 
 struct Player {
@@ -39,12 +39,14 @@ impl Entity for Player {
             movement = movement.normalize();
             self.transform.translate(movement * self.speed * dt);
         }
+
         
-        // Keep player on screen
-        let screen_width = screen_width();
-        let screen_height = screen_height();
-        self.transform.position.x = self.transform.position.x.clamp(20.0, screen_width - 20.0);
-        self.transform.position.y = self.transform.position.y.clamp(20.0, screen_height - 20.0);
+        
+        // Keep player in world bounds (larger than screen)
+        let world_width = 2000.0;
+        let world_height = 2000.0;
+        self.transform.position.x = self.transform.position.x.clamp(20.0, world_width - 20.0);
+        self.transform.position.y = self.transform.position.y.clamp(20.0, world_height - 20.0);
     }
 
     fn draw(&self) {
@@ -78,6 +80,8 @@ impl Entity for Player {
     fn is_active(&self) -> bool {
         self.active
     }
+
+    
 }
 
 struct Enemy {
@@ -104,10 +108,10 @@ impl Entity for Enemy {
         let distance_to_target = self.transform.position.distance_to(self.target_position);
         
         if distance_to_target < 5.0 {
-            // Pick a new random target
+            // Pick a new random target in the world
             self.target_position = Vec2::new(
-                rand::gen_range(50.0, screen_width() - 50.0),
-                rand::gen_range(50.0, screen_height() - 50.0),
+                rand::gen_range(50.0, 1950.0),
+                rand::gen_range(50.0, 1950.0),
             );
         } else {
             // Move toward target
@@ -116,6 +120,12 @@ impl Entity for Enemy {
                 self.speed * dt,
             );
         }
+        
+        // Keep enemy in world bounds
+        let world_width = 2000.0;
+        let world_height = 2000.0;
+        self.transform.position.x = self.transform.position.x.clamp(20.0, world_width - 20.0);
+        self.transform.position.y = self.transform.position.y.clamp(20.0, world_height - 20.0);
     }
 
     fn draw(&self) {
@@ -149,33 +159,77 @@ impl Entity for Enemy {
     }
 }
 
-#[macroquad::main("Lastor Framework Demo")]
+// Simple camera controller that doesn't require complex input handling
+struct CameraController;
+
+impl Entity for CameraController {
+    fn update(&mut self, _dt: f32) {
+        // Camera logic will be handled in main loop
+    }
+    
+    fn draw(&self) {
+        // No drawing
+    }
+    
+    fn is_active(&self) -> bool {
+        true
+    }
+}
+
+#[macroquad::main("Lastor Framework Demo with Camera")]
 async fn main() {
     let config = GameConfig {
-        title: "Enhanced Lastor Demo".to_string(),
+        title: "Lastor Demo with Camera".to_string(),
         window_width: 1024,
         window_height: 768,
         show_fps: true,
         background_color: Color::from_hex(0x0f0f0f),
         ..Default::default()
     };
-    
+
     let mut game = Game::with_config(config);
     
-    // Add player
-    game.add_entity(Box::new(Player::new(Vec2::new(100.0, 200.0))));
-    
+
+    // Set up camera for a larger world
+    let world_size = Vec2::new(2000.0, 2000.0);
+    game.get_scene_mut().camera.set_bounds(Some(CameraBounds::new(
+        0.0, 0.0, world_size.x, world_size.y,
+    )));
+
+    // Add player in the world center
+    let player_pos = Vec2::new(1000.0, 1000.0);
+    let player = Box::new(Player::new(player_pos));
+    let player_ref: *const Player = &*player; // raw pointer to access later
+    game.add_entity(player);
+
+    // Set camera to follow player dynamically
+    game.get_scene_mut().camera.set_follow_target(move || unsafe {
+        (*player_ref).transform.position
+    });
+    game.get_scene_mut().camera.set_follow_speed(6.0);
+                game.get_scene_mut()
+                .camera
+                .add_screen_shake(5.0, 12.0); // duration, magnitude
     // Add some enemies
-    for i in 0..3 {
-        game.add_entity(Box::new(Enemy::new(Vec2::new(
-            300.0 + i as f32 * 100.0,
-            300.0,
-        ))));
+    let enemy_positions = [
+        Vec2::new(500.0, 500.0),
+        Vec2::new(1500.0, 500.0),
+        Vec2::new(500.0, 1500.0),
+        Vec2::new(1500.0, 1500.0),
+    ];
+
+    for pos in enemy_positions {
+        game.add_entity(Box::new(Enemy::new(pos)));
     }
-    
-    // Show instructions
+
+    // Add camera controller
+    game.add_entity(Box::new(CameraController));
+
+    println!("=== LASTOR BASIC GAME WITH CAMERA ===");
     println!("Use WASD or arrow keys to move the blue player!");
-    println!("Red enemies will move around randomly.");
-    
+    println!("Red enemies move randomly around the large world.");
+    println!("Camera automatically follows the player.");
+
+    // Run the game
     game.run().await;
 }

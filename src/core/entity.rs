@@ -17,11 +17,13 @@ pub trait Entity {
         self.update(dt);
     }
     
+
     /// Get read-only access to this entity's transform (if it has one)
     fn get_transform(&self) -> Option<&Transform> {
         None
     }
     
+
     /// Get mutable access to this entity's transform (if it has one)
     fn get_transform_mut(&mut self) -> Option<&mut Transform> {
         None
@@ -31,10 +33,16 @@ pub trait Entity {
     fn is_active(&self) -> bool {
         true
     }
+
+        fn get_bounds(&self) -> Option<(Vec2, Vec2)> {
+        None
+    }
 }
 
 /// A basic entity implementation with transform component
 /// Use this as a base for simple entities, or implement Entity trait directly for more control
+
+
 pub struct GameObject {
     pub transform: Transform,
     pub active: bool,

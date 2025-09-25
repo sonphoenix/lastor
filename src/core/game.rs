@@ -1,7 +1,7 @@
+// src/game.rs
 use macroquad::prelude::*;
 use super::{Entity, Scene, TimeManager};
 use crate::input::InputManager;
-use crate::rendering::Camera;
 
 /// Configuration for the game
 pub struct GameConfig {
@@ -11,7 +11,7 @@ pub struct GameConfig {
     pub target_fps: u32,
     pub background_color: Color,
     pub show_fps: bool,
-    pub show_input_debug: bool,  // New: show input debug info
+    pub show_input_debug: bool,
 }
 
 impl Default for GameConfig {
@@ -28,13 +28,12 @@ impl Default for GameConfig {
     }
 }
 
-/// The main game runner with enhanced features
+/// The main game runner
 pub struct Game {
     scene: Scene,
     time_manager: TimeManager,
-    input_manager: InputManager,  // New: integrated input manager
-    config: GameConfig,
-    camera: Camera,
+    input_manager: InputManager,
+    pub config: GameConfig,
 }
 
 impl Game {
@@ -46,14 +45,17 @@ impl Game {
         Self {
             scene: Scene::new(),
             time_manager: TimeManager::new(),
-            input_manager: InputManager::new(),  // Initialize input manager
+            input_manager: InputManager::new(),
             config,
-            camera: Camera::new(),
         }
     }
 
     pub fn add_entity(&mut self, entity: Box<dyn Entity>) {
         self.scene.add_entity(entity);
+    }
+    
+    pub fn get_scene(&self) -> &Scene {
+        &self.scene
     }
     
     pub fn get_scene_mut(&mut self) -> &mut Scene {
@@ -64,26 +66,17 @@ impl Game {
         &self.time_manager
     }
     
-    pub fn get_input(&self) -> &InputManager {  // New: access to input manager
+    pub fn get_input(&self) -> &InputManager {
         &self.input_manager
     }
     
-    pub fn get_input_mut(&mut self) -> &mut InputManager {  // New: mutable access for binding changes
+    pub fn get_input_mut(&mut self) -> &mut InputManager {
         &mut self.input_manager
     }
     
     pub fn set_time_scale(&mut self, scale: f32) {
         self.time_manager.set_time_scale(scale);
     }
-
-    pub fn get_camera(&self) -> &Camera {
-    &self.camera
-    }
-
-pub fn get_camera_mut(&mut self) -> &mut Camera {
-    &mut self.camera
-}
-
 
     pub async fn run(&mut self) {
         loop {
@@ -93,34 +86,26 @@ pub fn get_camera_mut(&mut self) -> &mut Camera {
             
             // Update input 
             self.input_manager.update(dt);
-             self.scene.update_with_input(dt, &self.input_manager);
-
+            
+            // Update scene entities with input
+            self.scene.update_with_input(dt, &self.input_manager);
+            
+            // Update camera separately
+            self.scene.update_camera(dt);
+            
             // Clear screen
             clear_background(self.config.background_color);
-
-            // Update camera
-            self.camera.update(dt);
-            // Apply camera transform
-            self.camera.apply();    
             
-            // Update and draw scene
-            self.scene.update(dt);
-            self.scene.draw();
+            // Apply camera and draw scene (Game handles camera operations)
+            self.scene.camera.apply();
+            self.scene.draw_entities();
+            self.scene.camera.reset();
             
             // Show debug info if enabled
             if self.config.show_fps {
-                let fps = get_fps();
-                draw_text(&format!("FPS: {}", fps), 10.0, 30.0, 20.0, WHITE);
-                draw_text(
-                    &format!("Entities: {}", self.scene.active_entity_count()),
-                    10.0,
-                    50.0,
-                    20.0,
-                    WHITE,
-                );
+                self.draw_fps_info();
             }
             
-            // Show input debug info
             if self.config.show_input_debug {
                 self.draw_input_debug();
             }
@@ -129,8 +114,37 @@ pub fn get_camera_mut(&mut self) -> &mut Camera {
         }
     }
     
+    fn draw_fps_info(&self) {
+        let fps = get_fps();
+        draw_text(&format!("FPS: {}", fps), 10.0, 30.0, 20.0, WHITE);
+        draw_text(
+            &format!("Entities: {}", self.scene.active_entity_count()),
+            10.0,
+            50.0,
+            20.0,
+            WHITE,
+        );
+        
+        // Show camera info
+        let cam_pos = self.scene.camera.get_final_position();
+        draw_text(
+            &format!("Camera: ({:.1}, {:.1})", cam_pos.x, cam_pos.y),
+            10.0,
+            70.0,
+            20.0,
+            WHITE,
+        );
+        draw_text(
+            &format!("Zoom: {:.2}x", self.scene.camera.zoom),
+            10.0,
+            90.0,
+            20.0,
+            WHITE,
+        );
+    }
+    
     fn draw_input_debug(&self) {
-        let y_start = if self.config.show_fps { 70.0 } else { 30.0 };
+        let y_start = if self.config.show_fps { 110.0 } else { 30.0 };
         let mut y_offset = 0.0;
         
         draw_text("=== INPUT DEBUG ===", 10.0, y_start + y_offset, 16.0, YELLOW);

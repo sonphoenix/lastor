@@ -1,5 +1,5 @@
 use macroquad::prelude::*;
-use crate::math::{Transform, Vec2Utils};
+use crate::math::Vec2Utils;
 
 /// Camera bounds for constraining camera movement
 #[derive(Debug, Clone)]
@@ -49,8 +49,8 @@ pub struct Camera {
     shake_timer: f32,
     shake_offset: Vec2,
     
-    // Target following
-    follow_target: Option<Vec2>,
+    // Target following (changed: now closure instead of static Vec2)
+    pub follow_target: Option<Box<dyn Fn() -> Vec2>>,
     follow_speed: f32,
     follow_offset: Vec2,
     
@@ -70,7 +70,6 @@ pub struct Camera {
 }
 
 impl Camera {
-    /// Create a new camera at the center of the screen
     pub fn new() -> Self {
         let screen_center = Vec2::new(screen_width() * 0.5, screen_height() * 0.5);
         
@@ -98,61 +97,55 @@ impl Camera {
             dead_zone: None,
         }
     }
-    
-    /// Create a camera that follows a target immediately
-    pub fn following(target: Vec2) -> Self {
-        let mut camera = Self::new();
-        camera.set_position(target);
-        camera.follow_target(target);
-        camera
+
+    /// Set a dynamic follow target (closure that returns Vec2)
+    pub fn set_follow_target<F>(&mut self, f: F)
+    where
+        F: Fn() -> Vec2 + 'static,
+    {
+        self.follow_target = Some(Box::new(f));
+    }
+
+    pub fn clear_follow_target(&mut self) {
+        self.follow_target = None;
     }
     
-    /// Update camera (call this every frame)
     pub fn update(&mut self, dt: f32) {
-        // Update screen center in case window was resized
         self.screen_center = Vec2::new(screen_width() * 0.5, screen_height() * 0.5);
-        
-        // Update target following
         self.update_following(dt);
-        
-        // Update smooth position transition
         self.update_smooth_movement(dt);
-        
-        // Update screen shake
         self.update_screen_shake(dt);
-        
-        // Update smooth zoom
         self.update_smooth_zoom(dt);
-        
-        // Apply bounds
         self.apply_bounds();
     }
     
     fn update_following(&mut self, dt: f32) {
-        if let Some(target) = self.follow_target {
+        if let Some(get_target) = &self.follow_target {
+            let target = get_target(); 
             let target_with_offset = target + self.follow_offset;
             
-            // Check dead zone
+            // Dead zone
             if let Some(dead_zone_radius) = self.dead_zone {
                 let distance = self.target_position.distance_to(target_with_offset);
                 if distance <= dead_zone_radius {
-                    return; // Don't move if target is in dead zone
+                    return;
                 }
             }
             
             // Smooth following
             if self.follow_speed > 0.0 {
+                let distance_factor_val = distance_factor(self.target_position, target_with_offset);
+                let move_amount = self.follow_speed * distance_factor_val * dt * 60.0;
                 self.target_position = self.target_position.move_toward(
                     target_with_offset,
-                    self.follow_speed * distance_factor(self.target_position, target_with_offset) * dt * 60.0
+                    move_amount
                 );
             } else {
-                // Instant following
                 self.target_position = target_with_offset;
             }
         }
     }
-    
+
     fn update_smooth_movement(&mut self, dt: f32) {
         // Smooth position interpolation
         let move_speed = 10.0; // Adjust for responsiveness
@@ -217,6 +210,48 @@ impl Camera {
             self.target_position.y = self.target_position.y.clamp(min_camera_pos.y, max_camera_pos.y);
         }
     }
+
+        /// Helper method for entities to convert coordinates using the active camera
+    pub fn world_to_screen_current(world_pos: Vec2) -> Vec2 {
+        // This would need a different approach - maybe a global camera instance
+        // or we pass camera reference to entities
+        world_pos // placeholder
+    }
+    
+    /// Check if an entity is visible for culling
+    pub fn is_rect_visible(&self, position: Vec2, size: Vec2) -> bool {
+        let (min, max) = self.get_view_rect();
+        position.x + size.x >= min.x && position.x <= max.x &&
+        position.y + size.y >= min.y && position.y <= max.y
+    }
+
+
+      pub fn with_bounds(mut self, bounds: CameraBounds) -> Self {
+        self.set_bounds(Some(bounds));
+        self
+    }
+    
+    pub fn with_follow_speed(mut self, speed: f32) -> Self {
+        self.set_follow_speed(speed);
+        self
+    }
+    
+    pub fn strategic_camera(position: Vec2, level_size: Vec2) -> Self {
+        let mut camera = Camera::new();
+        camera.set_position(position);
+        camera.set_bounds_from_level_size(level_size.x, level_size.y);
+        camera.set_zoom(0.5); // Zoomed out for strategy games
+        camera
+    }
+    
+    pub fn platformer_camera(position: Vec2, level_size: Vec2) -> Self {
+        let mut camera = Camera::new();
+        camera.set_position(position);
+        camera.set_bounds_from_level_size(level_size.x, level_size.y);
+        camera.set_follow_speed(8.0); // Faster following for platformers
+        camera.set_dead_zone(Some(50.0)); // Dead zone for less jittery movement
+        camera
+    }
     
     // === Basic Controls ===
     
@@ -257,22 +292,21 @@ impl Camera {
         self.rotation += angle;
     }
     
-    // === Following System ===
+        // === Following System ===
     
-    /// Make camera follow a target position
-    pub fn follow_target(&mut self, target: Vec2) {
-        self.follow_target = Some(target);
+    /// Update the follow target (replace with a new closure)
+    pub fn update_follow_target<F>(&mut self, f: F)
+    where
+        F: Fn() -> Vec2 + 'static,
+    {
+        self.follow_target = Some(Box::new(f));
     }
-    
-    /// Update the follow target position
-    pub fn update_follow_target(&mut self, target: Vec2) {
-        self.follow_target = Some(target);
-    }
-    
+
     /// Stop following target
     pub fn stop_following(&mut self) {
         self.follow_target = None;
     }
+
     
     /// Set follow speed (0 = instant, higher = slower/smoother)
     pub fn set_follow_speed(&mut self, speed: f32) {
@@ -293,6 +327,7 @@ impl Camera {
     
     /// Add screen shake effect
     pub fn add_screen_shake(&mut self, intensity: f32, duration: f32) {
+        println!("camera is shaking");
         self.shake_intensity = intensity;
         self.shake_duration = duration;
         self.shake_timer = duration;
@@ -415,7 +450,7 @@ impl Camera {
     }
     
     /// Reset camera transform (for UI drawing)
-    pub fn reset() {
+    pub fn reset(&mut self ) {
         pop_camera_state();
     }
     
@@ -453,9 +488,7 @@ impl Default for Camera {
     }
 }
 
-// Helper function for smooth following
 fn distance_factor(from: Vec2, to: Vec2) -> f32 {
     let distance = from.distance_to(to);
-    // Further away = faster following (feels more natural)
     (distance / 100.0).min(2.0).max(0.1)
 }
